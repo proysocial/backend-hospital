@@ -22,7 +22,7 @@ load_dotenv(BASE_DIR / '.env')
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+# STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
@@ -34,7 +34,9 @@ SECRET_KEY = 'django-insecure-g!$al$f#(xak86o8b9^ige7ve%x)o9s@_lw@*mvthqmta!otbj
 DEBUG = True
 
 ALLOWED_HOSTS = [
-    'medireport.pythonanywhere.com'
+    "backend-hospital-086t.onrender.com",
+    "localhost",
+    "127.0.0.1",
 ]
 
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
@@ -139,7 +141,8 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 from datetime import timedelta
 

@@ -31,7 +31,7 @@ def enviar_codigo_recuperacion(request):
     send_mail(
         subject="Recuperación de contraseña",
         message=f"Tu código de recuperación es: {codigo}",
-        from_email="noreply@medireport.com",
+        from_email="proysocialperu@gmail.com",
         recipient_list=[correo],
     )
 

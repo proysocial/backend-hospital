@@ -39,6 +39,11 @@ ALLOWED_HOSTS = [
     "127.0.0.1",
 ]
 
+CSRF_TRUSTED_ORIGINS = [
+    "https://backend-hospital-086t.onrender.com",
+    "https://frontend-hospital-liard.vercel.app/"
+]
+
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 
 # Application definition

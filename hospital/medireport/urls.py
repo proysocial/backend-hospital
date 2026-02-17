@@ -7,7 +7,7 @@ from medireport.views.recuperacion import (
 )
 from medireport.views.report.metrics import MetricsDashboardView
 from medireport.views.report.txt_upload import UploadTXTView
-
+from medireport.views.clear_registros import ClearRegistroTXT
 
 urlpatterns = [
     path('registro/', registrar_usuario),
@@ -16,4 +16,5 @@ urlpatterns = [
     path('recuperar/cambiar-contrasena/', cambiar_contrasena),
     path("upload-txt/", UploadTXTView.as_view()),
     path("metrics-dashboard/", MetricsDashboardView.as_view()),
+    path('clear-registros/', ClearRegistroTXT.as_view(), name='clear-registros'),
 ]

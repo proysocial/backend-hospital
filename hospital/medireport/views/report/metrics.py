@@ -1,7 +1,7 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.db.models import Count, Avg, F, Q, ExpressionWrapper, DurationField
-from django.db.models.functions import TruncMonth, TruncHour, ExtractHour
+from django.db.models.functions import TruncMonth, TruncHour, ExtractHour, ExtractWeekDay
 from ...models import ExamenSolicitud, ExamenResultado
 
 
@@ -249,6 +249,23 @@ class MetricsDashboardView(APIView):
                 .order_by('-total')[:8]
             )
 
+            # Nuevos gráficos para áreas
+            dia_semana_serv = list(
+                qs_s.exclude(fech_solic__isnull=True)
+                .annotate(dia_semana=ExtractWeekDay('fech_solic'))
+                .values('dia_semana')
+                .annotate(total=Count('id'))
+                .order_by('dia_semana')
+            )
+
+            # Top pacientes del área
+            pacientes_serv = list(
+                qs_s.exclude(paciente__isnull=True).exclude(paciente='')
+                .values('paciente')
+                .annotate(total=Count('id'))
+                .order_by('-total')[:10]
+            )
+
             resumen_areas[nombre_servicio] = {
                 'total_solicitados': qs_s.count(),
                 'total_con_resultado': qs_r.count(),
@@ -259,10 +276,30 @@ class MetricsDashboardView(APIView):
                 'tendencia': tend_serv_fmt,
                 'sexo': sexo_serv,
                 'doctores': doctores_serv,
+                # Nuevas métricas por área
+                'dia_semana': dia_semana_serv,
+                'pacientes_frecuentes': pacientes_serv,
             }
 
         # ─── Examen más solicitado (para KPI) ───────────────────────────────
         examen_top = examenes_mas_solicitados[0]['desc_examen'] if examenes_mas_solicitados else 'N/A'
+
+        # ─── Demanda por día de la semana ───────────────────────────────
+        demanda_dia_semana = list(
+            qs_solic.exclude(fech_solic__isnull=True)
+            .annotate(dia_semana=ExtractWeekDay('fech_solic'))
+            .values('dia_semana')
+            .annotate(total=Count('id'))
+            .order_by('dia_semana')
+        )
+
+        # ─── Top pacientes más frecuentes ───────────────────────────────
+        pacientes_frecuentes = list(
+            qs_solic.exclude(paciente__isnull=True).exclude(paciente='')
+            .values('paciente', 'dni_pac')
+            .annotate(total=Count('id'))
+            .order_by('-total')[:10]
+        )
 
         return Response({
             # KPIs
@@ -287,6 +324,9 @@ class MetricsDashboardView(APIView):
             'normal_patologico': normal_patologico_global,
             'diagnosticos_cie10': diagnosticos_cie10,
             'areas': areas,
+            # Nuevas métricas globales
+            'demanda_dia_semana': demanda_dia_semana,
+            'pacientes_frecuentes': pacientes_frecuentes,
             # Métricas por área (para tabs)
             'resumen_por_area': resumen_areas,
         })

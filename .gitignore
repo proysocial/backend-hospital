@@ -10,3 +10,5 @@ __pycache__/
 # Django
 db.sqlite3
 staticfiles/
+
+backup_mariadb.sql

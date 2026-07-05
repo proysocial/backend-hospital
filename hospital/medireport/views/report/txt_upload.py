@@ -4,8 +4,7 @@ from datetime import datetime
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from ...models import ExamenSolicitud, ExamenResultado
-
+from ...models import ExamenSolicitud, ExamenResultado, ExamenUnificado
 
 def parse_fecha(valor):
     """Convierte string de fecha a objeto date"""
@@ -17,7 +16,6 @@ def parse_fecha(valor):
         except ValueError:
             continue
     return None
-
 
 def detectar_tipo_txt(columnas):
     """
@@ -36,35 +34,34 @@ def detectar_tipo_txt(columnas):
     
     return 'desconocido'
 
-
 def procesar_solicitudes(filas, delimiter='|'):
     """Procesa filas del TXT de solicitudes"""
     creados = 0
     errores = 0
-    
-    ExamenSolicitud.objects.all().delete()
     
     for fila in filas:
         num = fila.get('NUM_ACTMED', '').strip()
         if num in ('', 'TOTAL', 'NUM_ACTMED'):
             continue
         try:
-            ExamenSolicitud.objects.create(
-                num_actmed=num,
-                cod_examen=fila.get('COD_EXAMEN', '').strip() or None,
-                desc_examen=fila.get('DESC_EXAMEN', '').strip() or None,
-                arealab=fila.get('AREALAB', '').strip() or None,
-                servicio=fila.get('SERVICIO', '').strip() or None,
-                dni_pac=fila.get('DNI_PAC', '').strip() or None,
-                paciente=fila.get('PACIENTE', '').strip() or None,
-                sexo=fila.get('SEXO', '').strip() or None,
-                fech_solic=parse_fecha(fila.get('FECH_SOLIC', '')),
-                horsolic=fila.get('HORSOLIC', '').strip() or None,
-                tipo_seguro=fila.get('TIPO_SEGURO', '').strip() or None,
-                dni_profesional=fila.get('DNI_PROFESIONAL', '').strip() or None,
-                profesional=fila.get('PROFESIONAL', '').strip() or None,
-                sede=fila.get('SEDE', '').strip() or None,
-                annos=int(fila.get('ANNOS', 0)) if fila.get('ANNOS', '').strip().isdigit() else None,
+            ExamenUnificado.objects.update_or_create(
+                acto_medico=num,
+                defaults={
+                    'cod_examen': fila.get('COD_EXAMEN', '').strip() or None,
+                    'desc_examen': fila.get('DESC_EXAMEN', '').strip() or None,
+                    'arealab': fila.get('AREALAB', '').strip() or None,
+                    'servicio': fila.get('SERVICIO', '').strip() or None,
+                    'dni_pac': fila.get('DNI_PAC', '').strip() or None,
+                    'paciente': fila.get('PACIENTE', '').strip() or None,
+                    'sexo': fila.get('SEXO', '').strip() or None,
+                    'fech_solic': parse_fecha(fila.get('FECH_SOLIC', '')),
+                    'horsolic': fila.get('HORSOLIC', '').strip() or None,
+                    'tipo_seguro': fila.get('TIPO_SEGURO', '').strip() or None,
+                    'dni_profesional': fila.get('DNI_PROFESIONAL', '').strip() or None,
+                    'profesional': fila.get('PROFESIONAL', '').strip() or None,
+                    'sede': fila.get('SEDE', '').strip() or None,
+                    'annos': int(fila.get('ANNOS', 0)) if fila.get('ANNOS', '').strip().isdigit() else None,
+                }
             )
             creados += 1
         except Exception:
@@ -72,35 +69,47 @@ def procesar_solicitudes(filas, delimiter='|'):
     
     return creados, errores
 
-
-def procesar_resultados(filas):
+def procesar_resultados(filas, nombre_archivo=''):
     """Procesa filas del TXT de resultados"""
     creados = 0
     errores = 0
     
-    ExamenResultado.objects.all().delete()
+    is_patcli = 'PATCLI' in nombre_archivo.upper()
     
     for fila in filas:
         acto = fila.get('ACTO_MEDICO', '').strip()
         if acto in ('', 'TOTAL', 'ACTO_MEDICO'):
             continue
         try:
-            ExamenResultado.objects.create(
+            resultado_val = fila.get('TIPO_RESULTADO', '').strip() if fila.get('TIPO_RESULTADO', '').strip() else fila.get('RESULTADO', '').strip()
+            
+            # En patología clínica a veces el resultado en sí mismo dice "TOTAL" sin especificar Normal o Patológico
+            if is_patcli and (not resultado_val or resultado_val.upper() == 'TOTAL'):
+                diagnostico = fila.get('DIAGNOSTICO', '').strip()
+                # Si hay un diagnóstico que no empieza con Z (Pesquisa), lo consideramos PATOLOGICO o el propio diagnóstico
+                if diagnostico and not diagnostico.startswith('Z'):
+                    resultado_val = 'PATOLOGICO'
+                else:
+                    resultado_val = 'NORMAL'
+
+            ExamenUnificado.objects.update_or_create(
                 acto_medico=acto,
-                examen=fila.get('EXAMEN', '').strip() or None,
-                descexamen=fila.get('DESCEXAMEN', '').strip() or None,
-                arealab=fila.get('AREALAB', '').strip() or None,
-                servicio=fila.get('SERVICIO', '').strip() or None,
-                dni=fila.get('DNI', '').strip() or None,
-                paciente=fila.get('PACIENTE', '').strip() or None,
-                sexo=fila.get('SEXO', '').strip() or None,
-                fecha_solicitud=parse_fecha(fila.get('FECHA_SOLICITUD', '')),
-                fecha_resultado=parse_fecha(fila.get('FECHA_RESULTADO', '')),
-                resultado=fila.get('RESULTADO', '').strip() or None,
-                diagnostico=fila.get('DIAGNOSTICO', '').strip() or None,
-                des_diagn=fila.get('DES_DIAGN', '').strip() or None,
-                profesional=fila.get('PROFESIONAL', '').strip() or None,
-                informe_resultado=fila.get('INFORME_RESULTADO', '').strip() or None,
+                defaults={
+                    'fecha_resultado': parse_fecha(fila.get('FECHA_RESULTADO', '')),
+                    'resultado': resultado_val or None,
+                    'diagnostico': fila.get('DIAGNOSTICO', '').strip() or None,
+                    'des_diagn': fila.get('DES_DIAGN', '').strip() or None,
+                    'profesional_resultado': fila.get('PROFESIONAL', '').strip() or None,
+                    'informe_resultado': fila.get('INFORME_RESULTADO', '').strip() or None,
+                    # Fallback if the request part was not processed yet or didn't have these
+                    'arealab': fila.get('AREALAB', '').strip() or None,
+                    'servicio': fila.get('SERVICIO', '').strip() or None,
+                    'dni_pac': fila.get('DNI', '').strip() or None,
+                    'paciente': fila.get('PACIENTE', '').strip() or None,
+                    'sexo': fila.get('SEXO', '').strip() or None,
+                    'cod_examen': fila.get('EXAMEN', '').strip() or None,
+                    'desc_examen': fila.get('DESCEXAMEN', '').strip() or None,
+                }
             )
             creados += 1
         except Exception:
@@ -118,7 +127,7 @@ class UploadTXTView(APIView):
     """
 
     def post(self, request):
-        archivos = request.FILES.getlist('files')
+        archivos = request.FILES.getlist('file')
         
         if not archivos:
             # Intentar con campo individual
@@ -134,6 +143,11 @@ class UploadTXTView(APIView):
                 {'error': 'No se enviaron archivos. Use campo "files" o "file1"/"file2".'},
                 status=status.HTTP_400_BAD_REQUEST
             )
+        
+        # Borramos una sola vez al inicio de la carga múltiple para que no se sobreescriban entre sí
+        ExamenSolicitud.objects.all().delete()
+        ExamenResultado.objects.all().delete()
+        ExamenUnificado.objects.all().delete()
         
         resultados = []
         
@@ -161,7 +175,7 @@ class UploadTXTView(APIView):
                         'errores': errores
                     })
                 elif tipo == 'resultados':
-                    creados, errores = procesar_resultados(filas)
+                    creados, errores = procesar_resultados(filas, archivo.name)
                     resultados.append({
                         'archivo': archivo.name,
                         'tipo': 'resultados',

@@ -1,8 +1,8 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from django.db.models import Count, Avg, F, Q, ExpressionWrapper, DurationField
+from django.db.models import Count, Avg, F, Q, ExpressionWrapper, DurationField, Min, Max
 from django.db.models.functions import TruncMonth, TruncHour, ExtractHour, ExtractWeekDay
-from ...models import ExamenSolicitud, ExamenResultado
+from ...models import ExamenUnificado
 
 
 class MetricsDashboardView(APIView):
@@ -24,25 +24,22 @@ class MetricsDashboardView(APIView):
         fecha_fin = request.query_params.get('fecha_fin', None)
 
         # QuerySets base con filtros
-        qs_solic = ExamenSolicitud.objects.all()
-        qs_result = ExamenResultado.objects.all()
+        qs_base = ExamenUnificado.objects.all()
 
         if area:
-            # Los tabs ahora usan SERVICIO como clave (no AREALAB)
-            qs_solic = qs_solic.filter(servicio__icontains=area)
-            qs_result = qs_result.filter(servicio__icontains=area)
+            qs_base = qs_base.filter(servicio__icontains=area)
 
         if servicio:
-            qs_solic = qs_solic.filter(servicio__icontains=servicio)
-            qs_result = qs_result.filter(servicio__icontains=servicio)
+            qs_base = qs_base.filter(servicio__icontains=servicio)
 
         if fecha_inicio:
-            qs_solic = qs_solic.filter(fech_solic__gte=fecha_inicio)
-            qs_result = qs_result.filter(fecha_solicitud__gte=fecha_inicio)
+            qs_base = qs_base.filter(fech_solic__gte=fecha_inicio)
 
         if fecha_fin:
-            qs_solic = qs_solic.filter(fech_solic__lte=fecha_fin)
-            qs_result = qs_result.filter(fecha_solicitud__lte=fecha_fin)
+            qs_base = qs_base.filter(fech_solic__lte=fecha_fin)
+
+        qs_solic = qs_base.exclude(fech_solic__isnull=True)
+        qs_result = qs_base.exclude(fecha_resultado__isnull=True)
 
         # ─── KPIs globales ───────────────────────────────────────────────────
         total_solicitados = qs_solic.count()
@@ -50,6 +47,11 @@ class MetricsDashboardView(APIView):
         tasa_resultado = round(
             (total_con_resultado / total_solicitados * 100) if total_solicitados > 0 else 0, 1
         )
+        
+        # Rango de fechas global
+        rango_fechas = qs_solic.aggregate(min_fecha=Min('fech_solic'), max_fecha=Max('fech_solic'))
+        fecha_inicio_datos = rango_fechas['min_fecha']
+        fecha_fin_datos = rango_fechas['max_fecha']
 
         # ─── Pacientes por sexo ──────────────────────────────────────────────
         pacientes_sexo = list(
@@ -63,7 +65,11 @@ class MetricsDashboardView(APIView):
         examenes_mas_solicitados = list(
             qs_solic.exclude(desc_examen__isnull=True)
             .values('desc_examen', 'cod_examen')
-            .annotate(total=Count('id'))
+            .annotate(
+                total=Count('id'),
+                primera_fecha=Min('fech_solic'),
+                ultima_fecha=Max('fech_solic')
+            )
             .order_by('-total')[:10]
         )
 
@@ -162,9 +168,9 @@ class MetricsDashboardView(APIView):
         )
 
         # ─── SERVICIOS para los TABS (siempre todos, sin filtro de área/fecha) ─
-        # Se usa ExamenSolicitud base para que los tabs nunca desaparezcan
+        # Se usa ExamenUnificado base para que los tabs nunca desaparezcan
         servicios_raw = list(
-            ExamenSolicitud.objects.exclude(servicio__isnull=True).exclude(servicio='')
+            ExamenUnificado.objects.exclude(fech_solic__isnull=True).exclude(servicio__isnull=True).exclude(servicio='')
             .values('servicio')
             .annotate(total=Count('id'))
             .order_by('-total')
@@ -178,14 +184,14 @@ class MetricsDashboardView(APIView):
             nombre_servicio = a['arealab']  # contiene valor de SERVICIO
 
             # Base con filtros de fecha aplicados también al detalle
-            qs_s = ExamenSolicitud.objects.filter(servicio=nombre_servicio)
-            qs_r = ExamenResultado.objects.filter(servicio=nombre_servicio)
+            qs_base_serv = ExamenUnificado.objects.filter(servicio=nombre_servicio)
             if fecha_inicio:
-                qs_s = qs_s.filter(fech_solic__gte=fecha_inicio)
-                qs_r = qs_r.filter(fecha_solicitud__gte=fecha_inicio)
+                qs_base_serv = qs_base_serv.filter(fech_solic__gte=fecha_inicio)
             if fecha_fin:
-                qs_s = qs_s.filter(fech_solic__lte=fecha_fin)
-                qs_r = qs_r.filter(fecha_solicitud__lte=fecha_fin)
+                qs_base_serv = qs_base_serv.filter(fech_solic__lte=fecha_fin)
+            
+            qs_s = qs_base_serv.exclude(fech_solic__isnull=True)
+            qs_r = qs_base_serv.exclude(fecha_resultado__isnull=True)
 
             # Top exámenes del servicio
             top_examenes = list(
@@ -310,6 +316,8 @@ class MetricsDashboardView(APIView):
                 'examen_top': examen_top,
                 'total_femenino': next((x['total'] for x in pacientes_sexo if x['sexo'] in ['F', 'FEMENINO']), 0),
                 'total_masculino': next((x['total'] for x in pacientes_sexo if x['sexo'] in ['M', 'MASCULINO']), 0),
+                'fecha_inicio_datos': fecha_inicio_datos,
+                'fecha_fin_datos': fecha_fin_datos,
             },
             # Métricas globales
             'examenes_mas_solicitados': examenes_mas_solicitados,
@@ -339,7 +347,7 @@ class AreasListView(APIView):
     """
     def get(self, request):
         areas = list(
-            ExamenSolicitud.objects.exclude(arealab__isnull=True).exclude(arealab='')
+            ExamenUnificado.objects.exclude(fech_solic__isnull=True).exclude(arealab__isnull=True).exclude(arealab='')
             .values('arealab')
             .annotate(total=Count('id'))
             .order_by('-total')
@@ -359,12 +367,13 @@ class AreaDetalleView(APIView):
         if not area:
             return Response({'error': 'Parámetro "area" requerido'}, status=400)
 
-        qs_s = ExamenSolicitud.objects.filter(arealab__icontains=area)
-        qs_r = ExamenResultado.objects.filter(arealab__icontains=area)
+        qs_base = ExamenUnificado.objects.filter(arealab__icontains=area)
 
         if servicio:
-            qs_s = qs_s.filter(servicio__icontains=servicio)
-            qs_r = qs_r.filter(servicio__icontains=servicio)
+            qs_base = qs_base.filter(servicio__icontains=servicio)
+
+        qs_s = qs_base.exclude(fech_solic__isnull=True)
+        qs_r = qs_base.exclude(fecha_resultado__isnull=True)
 
         # Servicios dentro del área
         servicios = list(

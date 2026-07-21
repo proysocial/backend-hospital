@@ -4,6 +4,7 @@ hospital/.env
 
 # Python cache
 hospital/hospital/__pycache__/
+hospital/medireport/__pycache__/
 __pycache__/
 *.pyc
 

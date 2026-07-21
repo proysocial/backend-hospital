@@ -1,0 +1,19 @@
+services:
+  web:
+    build:
+      context: ./hospital
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      DB_HOST: 172.26.65.246
+      DB_PORT: 3306
+      DB_NAME: hospital_db
+      DB_USER: proyecto1
+      DB_PASSWORD: Adm1234$
+      DEBUG: "False"
+    volumes:
+      - static_data:/app/staticfiles
+
+volumes:
+  static_data:
